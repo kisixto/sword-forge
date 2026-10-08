@@ -94,10 +94,8 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--gold); out
 @keyframes quake { 0%, 100% { transform: translate(0, 0); } 15% { transform: translate(-7px, 4px); } 30% { transform: translate(6px, -5px); } 45% { transform: translate(-5px, -3px); } 60% { transform: translate(4px, 4px); } 80% { transform: translate(-2px, 2px); } }
 @keyframes enter { 0% { opacity: 0; transform: translateY(18px); } 100% { opacity: 1; transform: translateY(0); } }
 @keyframes rise { 0% { opacity: 0; transform: translateY(10px); } 15% { opacity: 1; transform: translateY(0); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
-@media (prefers-reduced-motion: reduce) {
-  .sword-wrap, .sword, .flash, .banner, .stage { animation: none !important; }
-  .banner.show { opacity: 1; }
-}
+.stage.fxoff, .stage.fxoff * { animation: none !important; }
+.stage.fxoff .banner.show { opacity: 1; }
 
 .controls { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 14px; }
 .nameplate { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -182,6 +180,7 @@ tr.now td { background: #3a3524; color: var(--gold); font-weight: 700; }
       <p>강화에 실패하면 검이 부서집니다. 어디서 멈출지 정하세요.</p>
     </div>
     <div class="tools">
+      <button type="button" class="btn small" id="fxBtn" aria-pressed="true">이펙트 켜짐</button>
       <button type="button" class="btn small" id="mute" aria-pressed="false">효과음 켜짐</button>
       <div class="purse" aria-label="보유 골드"><span class="label">보유 골드</span><b id="gold">0</b><span class="unit">G</span></div>
     </div>
@@ -298,7 +297,6 @@ tr.now td { background: #3a3524; color: var(--gold); font-weight: 700; }
   var MAX = 20;
   var STRIKE_MS = 620;
   var RESPAWN_MS = 760;
-  var RM = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   var TIERS = [
     { min: 0,  name: '낡은 검',   a: '#8a8f98', b: '#5d626b', guard: '#6b4f3a', glow: '#9aa4b1' },
@@ -324,7 +322,7 @@ tr.now td { background: #3a3524; color: var(--gold); font-weight: 700; }
 
   function def() {
     return {
-      gold: 1000, level: 0, furnace: 0, autoOwned: false, goldMade: false, mute: false,
+      gold: 1000, level: 0, furnace: 0, autoOwned: false, goldMade: false, mute: false, fx: true,
       items: { dust: 0, coupon: 0, charm: 0 },
       use: { dust: false, coupon: false, charm: false },
       stats: { tries: 0, wins: 0, breaks: 0, best: 0, spent: 0, swords: 1, golds: 0 },
@@ -342,6 +340,7 @@ tr.now td { background: #3a3524; color: var(--gold); font-weight: 700; }
         d.furnace = Math.min(10, Math.max(0, +o.furnace || 0));
         d.autoOwned = !!o.autoOwned;
         d.mute = !!o.mute;
+        d.fx = o.fx !== false;
         d.goldMade = !!o.goldMade;
         Object.keys(d.items).forEach(function (k) { d.items[k] = Math.max(0, +(o.items && o.items[k]) || 0); });
         Object.keys(d.use).forEach(function (k) { d.use[k] = !!(o.use && o.use[k]); });
@@ -521,7 +520,7 @@ tr.now td { background: #3a3524; color: var(--gold); font-weight: 700; }
     if (parts.length || rings.length) raf = requestAnimationFrame(loop); else { raf = 0; c2.clearRect(0, 0, CW, CH); }
   }
   function fxHit() {
-    if (RM) return;
+    if (!S.fx) return;
     var x = CW / 2, y = CH - 52;
     for (var i = 0; i < 12; i++) {
       var a = -Math.PI / 2 + (Math.random() - 0.5) * 2.4, sp = 90 + Math.random() * 200;
@@ -530,7 +529,7 @@ tr.now td { background: #3a3524; color: var(--gold); font-weight: 700; }
     kick();
   }
   function fxWin(level) {
-    if (RM) return;
+    if (!S.fx) return;
     var p = swordPos(), t = tierOf(level), n = 28 + level * 3;
     for (var i = 0; i < n; i++) {
       var a = Math.random() * 6.283, sp = 90 + Math.random() * 230;
@@ -541,7 +540,7 @@ tr.now td { background: #3a3524; color: var(--gold); font-weight: 700; }
     kick();
   }
   function fxGold() {
-    if (RM) return;
+    if (!S.fx) return;
     var p = swordPos();
     for (var i = 0; i < 90; i++) {
       var a = Math.random() * 6.283, sp = 110 + Math.random() * 300;
@@ -553,7 +552,7 @@ tr.now td { background: #3a3524; color: var(--gold); font-weight: 700; }
     kick();
   }
   function fxBreak(t) {
-    if (RM) return;
+    if (!S.fx) return;
     var p = swordPos();
     for (var i = 0; i < 28; i++) {
       var a = Math.random() * 6.283, sp = 140 + Math.random() * 300;
@@ -686,10 +685,10 @@ tr.now td { background: #3a3524; color: var(--gold); font-weight: 700; }
   }
 
   function restartGame() {
-    var m = S.mute;
+    var m = S.mute, fxk = S.fx;
     epoch += 1; busy = false;
     stopAuto('');
-    S = def(); S.mute = m;
+    S = def(); S.mute = m; S.fx = fxk;
     save(); renderAll(); fx('enter');
     say('새 검을 받았습니다', 'ok');
   }
@@ -785,6 +784,10 @@ tr.now td { background: #3a3524; color: var(--gold); font-weight: 700; }
     var m = $('#mute');
     m.textContent = S.mute ? '효과음 꺼짐' : '효과음 켜짐';
     m.setAttribute('aria-pressed', S.mute ? 'true' : 'false');
+    var fb = $('#fxBtn');
+    fb.textContent = S.fx ? '이펙트 켜짐' : '이펙트 꺼짐';
+    fb.setAttribute('aria-pressed', S.fx ? 'true' : 'false');
+    $('#stage').classList.toggle('fxoff', !S.fx);
   }
 
   function renderShop() {
@@ -878,6 +881,10 @@ tr.now td { background: #3a3524; color: var(--gold); font-weight: 700; }
       var k = b.getAttribute('data-use');
       S.use[k] = !S.use[k];
       sfx.tick();
+      save(); renderForge();
+    });
+    $('#fxBtn').addEventListener('click', function () {
+      S.fx = !S.fx;
       save(); renderForge();
     });
     $('#mute').addEventListener('click', function () {
