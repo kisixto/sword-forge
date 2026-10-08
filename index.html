@@ -391,13 +391,16 @@ tr.sec td { text-align: left; background: var(--panel-2); color: var(--muted); f
     if (l <= 0) return 0;
     return nice((1.7 - 0.03 * l) * BASE_T[l]);
   }
-  /* 금검: +0 판매가 100만 G에서 시작해 레벨마다 1.2배. 강화 비용은 그 레벨 판매가의 2%. */
-  var GOLD_V0 = 1000000, GOLD_STEP = 1.2, GOLD_FEE = 0.02;
-  function goldSell(l) { return nice(GOLD_V0 * Math.pow(GOLD_STEP, l)); }
-  function goldCost(l) { return nice(goldSell(l) * GOLD_FEE); }
+  /* 금검: 성공 확률은 일반 검의 60%(최저 5%). 강화 비용은 2만 G에서 레벨마다 1.2배.
+     판매가는 금 +1이 약 4만 2천 G에서 시작해 레벨마다 1.6배. 금 +0은 공짜로 받는 검이라 팔 수 없습니다. */
+  var GOLD_RATE = 0.6, GOLD_COST0 = 20000, GOLD_COST_STEP = 1.2, GOLD_SELL1 = 26000, GOLD_SELL_STEP = 1.6;
+  function goldRate(l) { return Math.max(5, Math.round(baseRate(l) * GOLD_RATE)); }
+  function goldSell(l) { return l <= 0 ? 0 : nice(GOLD_SELL1 * Math.pow(GOLD_SELL_STEP, l)); }
+  function goldCost(l) { return nice(GOLD_COST0 * Math.pow(GOLD_COST_STEP, l)); }
+  function rateOf(l, tier) { if (tier === undefined) tier = S.tier; return tier === 1 ? goldRate(l) : baseRate(l); }
   function active(k) { return S.use[k] && S.items[k] > 0; }
   function rateParts(l) {
-    var b = baseRate(l), f = S.furnace, d = active('dust') ? 10 : 0;
+    var b = rateOf(l), f = S.furnace, d = active('dust') ? 10 : 0;
     return { b: b, f: f, d: d, total: Math.min(100, b + f + d) };
   }
   function costOf(l, tier) { if (tier === undefined) tier = S.tier; return tier === 1 ? goldCost(l) : baseCost(l); }
@@ -408,7 +411,7 @@ tr.sec td { text-align: left; background: var(--panel-2); color: var(--muted); f
     for (var i = 0; i < list.length; i++) if (list[i].min <= l) t = list[i];
     return t;
   }
-  function bankrupt() { return S.tier === 0 && S.level === 0 && S.gold < costNow(0); }
+  function bankrupt() { return S.level === 0 && S.gold < costNow(0); }
 
   var busy = false, autoOn = false, autoTier = 0, autoTimer = null, epoch = 0;
 
@@ -649,7 +652,7 @@ tr.sec td { text-align: left; background: var(--panel-2); color: var(--muted); f
       if (conv) logAdd('win', '금검', '+' + l + ' → +' + nl + ' 달성! 검이 금검으로 변했습니다. 금 +0부터 다시 시작합니다');
       else if (top) logAdd('win', '정점', '금 +' + l + ' → 금 +' + nl + ' 달성! 전설의 금검이 되었습니다');
       else logAdd('win', '성공', lab + l + ' → ' + lab + nl + ' 강화 성공');
-      if (first) logAdd('buy', '안내', '금검 완성! 상점 가격이 1.5배가 되고, 금검을 들고 있는 동안 소모품은 8배가 더해집니다');
+      if (first) logAdd('buy', '안내', '금검 완성! 이제부터 팔거나 부서져도 금 +0에서 다시 시작합니다. 상점 가격은 1.5배, 소모품은 8배가 더해집니다');
       say(conv ? '금검으로 진화! 다시 +1부터' : (top ? '전설의 금검 완성!' : lab + nl + ' 강화 성공!'), 'ok');
       busy = false;
       refresh(); renderSword();
@@ -668,10 +671,9 @@ tr.sec td { text-align: left; background: var(--panel-2); color: var(--muted); f
     } else {
       var old = tierOf(l), wasG = S.tier === 1;
       S.level = 0;
-      S.tier = 0;
       S.stats.breaks += 1;
       S.stats.swords += 1;
-      logAdd('break', '파괴', wasG ? '금검 +' + l + ' 파괴. 새 일반 검을 받았습니다' : '+' + l + ' 검이 부서졌습니다. 새 검을 받았습니다');
+      logAdd('break', '파괴', wasG ? '금검 +' + l + ' 파괴. 새 금검(금 +0)을 받았습니다' : '+' + l + ' 검이 부서졌습니다. 새 검을 받았습니다');
       say(wasG ? '금검이 부서졌다…' : '+' + l + ' 검이 부서졌다…', 'bad');
       refresh();
       fx('gone'); fxStage('break'); sfx.brk(); fxBreak(old);
@@ -685,13 +687,12 @@ tr.sec td { text-align: left; background: var(--panel-2); color: var(--muted); f
   }
 
   function sell() {
-    if ((S.level < 1 && S.tier === 0) || busy || autoOn) return;
+    if (S.level < 1 || busy || autoOn) return;
     var price = sellPrice(S.level);
     S.gold += price;
-    logAdd('sell', '판매', (S.tier === 1 ? '금검 +' + S.level + ' 을 ' : '+' + S.level + ' 검을 ') + fmt(price) + ' G에 팔았습니다');
+    logAdd('sell', '판매', (S.tier === 1 ? '금검 +' + S.level + ' 을 ' : '+' + S.level + ' 검을 ') + fmt(price) + ' G에 팔았습니다' + (S.tier === 1 ? '. 새 금검(금 +0)을 받았습니다' : ''));
     say('+' + fmt(price) + ' G', 'ok');
     S.level = 0;
-    S.tier = 0;
     S.stats.swords += 1;
     sfx.sell();
     refresh(); renderSword(); fx('enter');
@@ -713,6 +714,16 @@ tr.sec td { text-align: left; background: var(--panel-2); color: var(--muted); f
     refresh();
   }
 
+  /* 금검 단계에서 골드가 바닥나 강화도 판매도 못 할 때: 금 +0 강화 3회분까지만 채워 줍니다 */
+  function support() {
+    var add = Math.max(0, costOf(0) * 3 - S.gold);
+    S.gold += add;
+    logAdd('buy', '지원', '대장장이가 ' + fmt(add) + ' G를 지원했습니다');
+    say('+' + fmt(add) + ' G 지원', 'ok');
+    sfx.buy();
+    refresh();
+  }
+
   function restartGame() {
     var m = S.mute, fxk = S.fx;
     epoch += 1; busy = false;
@@ -729,7 +740,7 @@ tr.sec td { text-align: left; background: var(--panel-2); color: var(--muted); f
     if (S.level >= target) { $('#autoNote').textContent = '이미 목표 레벨 이상입니다.'; return; }
     autoOn = true;
     autoTier = S.tier;
-    $('#autoNote').textContent = '목표 ' + (S.tier === 1 ? '금 +' : '+') + target + ' 까지 강화 중… ' + (S.tier === 1 ? '금검이 부서지면 멈춥니다.' : '실패하면 새 검으로 이어서 도전합니다.');
+    $('#autoNote').textContent = '목표 ' + (S.tier === 1 ? '금 +' : '+') + target + ' 까지 강화 중… 실패하면 새 검으로 이어서 도전합니다.';
     renderForge();
     autoStep(target);
   }
@@ -740,7 +751,6 @@ tr.sec td { text-align: left; background: var(--panel-2); color: var(--muted); f
       if (!autoOn) return;
       if (r.status === 'poor') stopAuto('골드가 부족해 멈췄습니다. 필요 ' + fmt(r.need) + ' G');
       else if (r.status === 'max') stopAuto('최대 강화에 도달했습니다.');
-      else if (r.status === 'break' && S.tier !== autoTier) stopAuto('금검이 부서져 멈췄습니다.');
       else if ((r.status === 'win' || r.status === 'convert') && reached(target)) stopAuto('목표 레벨에 도달했습니다.');
       else autoTimer = setTimeout(function () { autoStep(target); }, 260);
     });
@@ -788,20 +798,20 @@ tr.sec td { text-align: left; background: var(--panel-2); color: var(--muted); f
     c.classList.remove('safe');
     if (maxed) { c.textContent = '더 이상 강화할 수 없습니다. 지금 팔면 ' + fmt(sellPrice(l)) + ' G를 받습니다.'; c.classList.add('safe'); }
     else if (active('charm')) { c.textContent = '수호 부적이 실패했을 때 검이 부서지는 것을 한 번 막아 줍니다.'; c.classList.add('safe'); }
-    else if (S.tier === 1) c.textContent = '실패하면 금검이 부서지고 일반 검으로 돌아갑니다. 지금 팔면 ' + fmt(sellPrice(l)) + ' G를 받습니다.';
+    else if (S.tier === 1) c.textContent = '실패하면 금검이 부서지고 새 금검(금 +0)을 받습니다.' + (l >= 1 ? ' 지금 팔면 ' + fmt(sellPrice(l)) + ' G를 받습니다.' : '');
     else if (l === 0) c.textContent = '실패하면 검이 부서지고 새 검을 받습니다.';
     else c.textContent = '실패하면 검이 부서집니다. 지금 팔면 ' + fmt(sellPrice(l)) + ' G를 받습니다.';
 
     var btn = $('#enhance');
     if (busy) { btn.textContent = '단련 중…'; btn.disabled = true; }
     else if (maxed) { btn.textContent = '최대 강화 달성 · 판매해서 보상 받기'; btn.disabled = true; }
-    else if (bk) { btn.textContent = '골드가 바닥났어요 · 새로 시작'; btn.disabled = autoOn; }
+    else if (bk) { btn.textContent = S.tier === 1 ? '골드가 바닥났어요 · 지원금 받기' : '골드가 바닥났어요 · 새로 시작'; btn.disabled = autoOn; }
     else if (poor) { btn.textContent = '골드 부족 · 필요 ' + fmt(cost) + ' G'; btn.disabled = true; }
     else { btn.textContent = '강화하기 · ' + fmt(cost) + ' G' + (active('coupon') ? ' (할인 적용)' : ''); btn.disabled = autoOn; }
 
     var sb = $('#sell');
-    var noSell = l < 1 && S.tier === 0;
-    sb.textContent = noSell ? '검 판매 (+1 이상부터)' : (S.tier === 1 ? '금검 판매 +' + fmt(sellPrice(l)) + ' G' : '검 판매 +' + fmt(sellPrice(l)) + ' G');
+    var noSell = l < 1;
+    sb.textContent = noSell ? (S.tier === 1 ? '금검 판매 (금 +1부터)' : '검 판매 (+1 이상부터)') : (S.tier === 1 ? '금검 판매 +' + fmt(sellPrice(l)) + ' G' : '검 판매 +' + fmt(sellPrice(l)) + ' G');
     sb.disabled = noSell || locked;
 
     document.querySelectorAll('#toggles .chip').forEach(function (b) {
@@ -839,18 +849,18 @@ tr.sec td { text-align: left; background: var(--panel-2); color: var(--muted); f
     $('#shopList').innerHTML = html;
     var sn = $('#shopNote');
     sn.hidden = !S.goldMade && S.tier !== 1;
-    sn.textContent = (S.goldMade ? '금검을 완성한 적이 있어 모든 가격이 1.5배입니다.' : '') + (S.tier === 1 ? ' 금검을 들고 있는 동안 소모품(가루, 쿠폰, 부적)은 가격이 8배 더해집니다.' : '');
+    sn.textContent = '금검이 된 뒤라 모든 가격이 1.5배이고, 소모품(가루, 쿠폰, 부적)은 8배가 더해집니다.';
   }
 
   function renderTable() {
     var h = '<thead><tr><th>레벨</th><th>성공</th><th>비용</th><th>판매가</th></tr></thead><tbody>';
     [0, 1].forEach(function (tr) {
       var pre = tr === 1 ? '금 +' : '+';
-      h += '<tr class="sec"><td colspan="4">' + (tr === 1 ? '금검 (비용 · 판매가 상향)' : '일반 검') + '</td></tr>';
+      h += '<tr class="sec"><td colspan="4">' + (tr === 1 ? '금검 (확률 낮음 · 금 +0은 판매 불가)' : '일반 검') + '</td></tr>';
       for (var l = 0; l < MAX; l++) {
-        var r = Math.min(100, baseRate(l) + S.furnace), now = S.tier === tr && l === S.level;
+        var r = Math.min(100, rateOf(l, tr) + S.furnace), now = S.tier === tr && l === S.level;
         h += '<tr' + (now ? ' class="now"' : '') + '><td>' + pre + l + ' → ' + pre + (l + 1) + '</td><td>' + r + '%</td><td>' +
-          fmt(costOf(l, tr)) + ' G</td><td>' + (l === 0 && tr === 0 ? '—' : fmt(sellPrice(l, tr)) + ' G') + '</td></tr>';
+          fmt(costOf(l, tr)) + ' G</td><td>' + (l === 0 ? '—' : fmt(sellPrice(l, tr)) + ' G') + '</td></tr>';
       }
       if (tr === 0) h += '<tr><td>+' + MAX + '</td><td colspan="3">금검 +0으로 진화 (판매 불가)</td></tr>';
       else h += '<tr' + (S.tier === 1 && S.level >= MAX ? ' class="now"' : '') + '><td>금 +' + MAX + '</td><td>—</td><td>—</td><td>' + fmt(sellPrice(MAX, 1)) + ' G</td></tr>';
@@ -892,7 +902,7 @@ tr.sec td { text-align: left; background: var(--panel-2); color: var(--muted); f
     window.addEventListener('resize', sizeCanvas);
 
     $('#enhance').addEventListener('click', function () {
-      if (bankrupt()) { restartGame(); return; }
+      if (bankrupt()) { if (S.tier === 1) support(); else restartGame(); return; }
       attempt();
     });
     $('#sell').addEventListener('click', sell);
